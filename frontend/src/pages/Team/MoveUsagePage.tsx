@@ -4,7 +4,7 @@ import { Zap } from "lucide-react";
 import PageMeta from "../../components/common/PageMeta";
 import { useActiveTeam } from "../../context/ActiveTeamContext";
 import PokemonSprite from "../../components/pokemon/PokemonSprite";
-import { getDisplayName } from "../../utils/pokemonNameUtils";
+import { cleanPokemonName, getDisplayName } from "../../utils/pokemonNameUtils";
 import * as pokepasteService from "../../services/pokepasteService";
 import { analyticsApi } from "../../services/api/analyticsApi";
 
@@ -12,6 +12,14 @@ const MOVE_COLORS = [
   "#3b82f6", "#8b5cf6", "#06b6d4", "#f59e0b", "#ec4899",
   "#10b981", "#f97316", "#84cc16", "#6366f1", "#14b8a6",
 ];
+
+function normalizePokemonKey(rawName: string): string {
+  const cleaned = cleanPokemonName(rawName);
+  // Helper function to normalize the pokemon name to the forme name doesn't split up charts for the same pokemon. (Example: Zamazenta and Zamazenta-Crowned)
+  if (cleaned === "zamazenta") return "zamazenta-crowned";
+  if (cleaned === "zacian") return "zacian-crowned";
+  return cleaned;
+}
 
 interface MoveDataEntry {
   name: string;
@@ -48,7 +56,7 @@ export default function MoveUsagePage() {
           try {
             const parsed = await pokepasteService.fetchAndParse(team.pokepaste);
             pokepasteMovesets = parsed.reduce<Record<string, string[]>>((acc, pokemon) => {
-              const pokemonName = pokemon.name;
+              const pokemonName = pokemon.name ? normalizePokemonKey(pokemon.name) : "";
               if (pokemonName && pokemon.moves) {
                 if (acc[pokemonName]) {
                   const existingMoves = new Set(acc[pokemonName]);
@@ -72,11 +80,13 @@ export default function MoveUsagePage() {
         const usageStats: Record<string, Record<string, number>> = {};
         if (backendMoveData?.pokemonMoves) {
           backendMoveData.pokemonMoves.forEach(({ pokemon, moves }) => {
-            if (!usageStats[pokemon]) usageStats[pokemon] = {};
+            const key = normalizePokemonKey(pokemon);
+            if (!usageStats[key]) usageStats[key] = {};
             moves.forEach((moveEntry) => {
               // Handle both possible field names from backend
               const timesUsed = (moveEntry as Record<string, unknown>).timesUsed as number | undefined;
-              usageStats[pokemon][moveEntry.move] = timesUsed ?? moveEntry.count ?? 0;
+              const count = timesUsed ?? moveEntry.count ?? 0;
+              usageStats[key][moveEntry.move] = (usageStats[key][moveEntry.move] ?? 0) + count;
             });
           });
         }
